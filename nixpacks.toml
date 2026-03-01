@@ -3,19 +3,16 @@ NIXPACKS_PHP_ROOT_DIR = "/app/public"
 IS_LARAVEL = "true"
 
 #######################################
-# SETUP PHASE
+# SETUP
 #######################################
 [phases.setup]
 nixPkgs = [
-  "php82",
-  "php82Packages.composer",
-  "nodejs_20",
   "nginx",
   "python311Packages.supervisor"
 ]
 
 #######################################
-# INSTALL PHASE
+# INSTALL
 #######################################
 [phases.install]
 cmds = [
@@ -24,14 +21,11 @@ cmds = [
 ]
 
 #######################################
-# BUILD PHASE
+# BUILD
 #######################################
 [phases.build]
 cmds = [
   "npm run build",
-  "php artisan config:clear",
-  "php artisan route:clear",
-  "php artisan view:clear",
   "php artisan config:cache",
   "php artisan route:cache",
   "php artisan view:cache",
@@ -39,142 +33,9 @@ cmds = [
   "mkdir -p /etc/supervisor/conf.d/",
   "cp /assets/worker-*.conf /etc/supervisor/conf.d/",
   "cp /assets/supervisord.conf /etc/supervisord.conf",
+  "cp /assets/nginx.conf /etc/nginx/nginx.conf",
   "chmod +x /assets/start.sh"
 ]
 
-#######################################
-# START COMMAND
-#######################################
 [start]
 cmd = "/assets/start.sh"
-
-#######################################
-# STATIC ASSETS
-#######################################
-[staticAssets]
-
-################################################
-# START SCRIPT
-################################################
-"start.sh" = '''
-#!/bin/bash
-
-# Generate APP_KEY if missing
-if [ -z "$APP_KEY" ]; then
-  php artisan key:generate
-fi
-
-# Run migrations automatically
-php artisan migrate --force
-
-# Start Supervisor
-supervisord -c /etc/supervisord.conf -n
-'''
-
-################################################
-# SUPERVISOR MAIN CONFIG
-################################################
-"supervisord.conf" = '''
-[supervisord]
-logfile=/var/log/supervisord.log
-pidfile=/tmp/supervisord.pid
-nodaemon=true
-
-[include]
-files = /etc/supervisor/conf.d/*.conf
-'''
-
-################################################
-# NGINX
-################################################
-"worker-nginx.conf" = '''
-[program:nginx]
-command=nginx -g "daemon off;"
-autostart=true
-autorestart=true
-stdout_logfile=/var/log/nginx.log
-stderr_logfile=/var/log/nginx.log
-'''
-
-################################################
-# PHP FPM
-################################################
-"worker-phpfpm.conf" = '''
-[program:php-fpm]
-command=php-fpm -F
-autostart=true
-autorestart=true
-stdout_logfile=/var/log/php-fpm.log
-stderr_logfile=/var/log/php-fpm.log
-'''
-
-################################################
-# LARAVEL QUEUE WORKER
-################################################
-"worker-laravel.conf" = '''
-[program:laravel-worker]
-command=php /app/artisan queue:work --sleep=3 --tries=3 --max-time=3600
-process_name=%(program_name)s_%(process_num)02d
-numprocs=2
-autostart=true
-autorestart=true
-stopasgroup=true
-killasgroup=true
-stdout_logfile=/var/log/laravel-worker.log
-stderr_logfile=/var/log/laravel-worker.log
-'''
-
-################################################
-# LARAVEL SCHEDULER
-################################################
-"worker-scheduler.conf" = '''
-[program:laravel-scheduler]
-command=php /app/artisan schedule:work
-autostart=true
-autorestart=true
-stdout_logfile=/var/log/laravel-scheduler.log
-stderr_logfile=/var/log/laravel-scheduler.log
-'''
-
-################################################
-# NGINX CONFIG
-################################################
-"nginx.conf" = '''
-user www-data;
-worker_processes auto;
-daemon off;
-
-events {
-  worker_connections 1024;
-}
-
-http {
-    include       mime.types;
-    default_type  application/octet-stream;
-
-    sendfile on;
-
-    server {
-        listen ${PORT};
-        root /app/public;
-        index index.php index.html;
-
-        client_max_body_size 35M;
-
-        location / {
-            try_files $uri $uri/ /index.php?$query_string;
-        }
-
-        location ~ \.php$ {
-            include fastcgi_params;
-            fastcgi_pass 127.0.0.1:9000;
-            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-            fastcgi_index index.php;
-        }
-
-        location ~ /\.(?!well-known).* {
-            deny all;
-        }
-    }
-}
-'''
