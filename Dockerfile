@@ -13,6 +13,7 @@ RUN apk add --no-cache \
     unzip \
     icu-dev \
     oniguruma-dev \
+    sqlite-dev \
     linux-headers \
     $PHPIZE_DEPS
 
